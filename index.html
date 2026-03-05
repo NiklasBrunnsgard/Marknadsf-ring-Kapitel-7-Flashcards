@@ -146,6 +146,7 @@
   .tab[data-filter="fas1"].active { background: var(--phase1); border-color: var(--phase1); }
   .tab[data-filter="fas2"].active { background: var(--phase2); border-color: var(--phase2); }
   .tab[data-filter="fas3"].active { background: var(--phase3); border-color: var(--phase3); }
+  .tab[data-filter="review"].active { background: var(--phase3); border-color: var(--phase3); color: #0f0e17; }
 
   /* CARD AREA */
   .card-area {
@@ -440,6 +441,7 @@
     <button class="tab" data-filter="fas1">Fas 1 – Före köp</button>
     <button class="tab" data-filter="fas2">Fas 2 – Under köp</button>
     <button class="tab" data-filter="fas3">Fas 3 – Efter köp</button>
+    <button class="tab" id="reviewTab" data-filter="review" >✕ Öva mer-kort</button>
   </div>
 
   <div class="score-row" style="margin-bottom: 24px;">
@@ -493,6 +495,7 @@
 </div>
 
 <script>
+
 const ALL_CARDS = [
   // GRUNDBEGREPP
   {
@@ -620,19 +623,34 @@ const ALL_CARDS = [
   }
 ];
 
+
 let activeFilter = 'all';
 let currentCards = [];
 let currentIndex = 0;
 let isFlipped = false;
 let knownCards = new Set();
 let reviewCards = new Set();
+let reviewCardIds = new Set();
 
 function getFilteredCards() {
   if (activeFilter === 'all') return [...ALL_CARDS];
+  if (activeFilter === 'review') return ALL_CARDS.filter((_, i) => reviewCardIds.has(i));
   return ALL_CARDS.filter(c => c.category === activeFilter);
 }
 
+function updateReviewTab() {
+  const rt = document.getElementById('reviewTab');
+  if (!rt) return;
+  rt.textContent = reviewCardIds.size > 0 ? '✕ Öva mer-kort (' + reviewCardIds.size + ')' : '✕ Öva mer-kort';
+}
+
 function initCards() {
+  if (activeFilter === 'review' && reviewCardIds.size === 0) {
+    alert('Du har inte markerat några kort med "Öva mer" ännu!');
+    activeFilter = 'all';
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('[data-filter="all"]').classList.add('active');
+  }
   currentCards = getFilteredCards();
   currentIndex = 0;
   isFlipped = false;
@@ -648,22 +666,16 @@ function updateDisplay() {
   if (currentCards.length === 0) return;
   const card = currentCards[currentIndex];
   const el = document.getElementById('mainCard');
-
-  // Reset flip
   el.classList.remove('flipped');
   isFlipped = false;
-
   document.getElementById('cardQuestion').innerHTML = card.question;
   document.getElementById('cardAnswer').innerHTML = card.answer;
-
-  const num = `${currentIndex + 1} / ${currentCards.length}`;
+  const num = (currentIndex + 1) + ' / ' + currentCards.length;
   document.getElementById('cardCounter').textContent = num;
   document.getElementById('cardCounterBack').textContent = num;
-
   const dot = document.getElementById('catDot');
   dot.className = 'cat-dot ' + card.category;
   document.getElementById('catLabel').textContent = card.catLabel;
-
   updateProgress();
 }
 
@@ -672,7 +684,7 @@ function updateProgress() {
   const done = knownCards.size + reviewCards.size;
   const pct = total > 0 ? (done / total) * 100 : 0;
   document.getElementById('progressFill').style.width = pct + '%';
-  document.getElementById('progressText').textContent = `${done} / ${total} klara`;
+  document.getElementById('progressText').textContent = done + ' / ' + total + ' klara';
 }
 
 function updateScores() {
@@ -691,9 +703,8 @@ function nextCard() {
   if (currentIndex < currentCards.length - 1) {
     currentIndex++;
     updateDisplay();
-  } else {
-    checkCompleted();
   }
+  // Don't trigger completed on skip - only markCard triggers that
 }
 
 function prevCard() {
@@ -705,17 +716,19 @@ function prevCard() {
 
 function markCard(type) {
   const cardId = currentIndex;
+  const globalId = ALL_CARDS.indexOf(currentCards[currentIndex]);
   if (type === 'know') {
     knownCards.add(cardId);
     reviewCards.delete(cardId);
+    reviewCardIds.delete(globalId);
   } else {
     reviewCards.add(cardId);
     knownCards.delete(cardId);
+    reviewCardIds.add(globalId);
   }
+  updateReviewTab();
   updateScores();
   updateProgress();
-
-  // Brief visual feedback then advance
   setTimeout(() => {
     if (currentIndex < currentCards.length - 1) {
       currentIndex++;
@@ -728,11 +741,13 @@ function markCard(type) {
 
 function checkCompleted() {
   const allMarked = (knownCards.size + reviewCards.size) >= currentCards.length;
-  if (allMarked || currentIndex >= currentCards.length - 1) {
+  if (allMarked) {
     const known = knownCards.size;
     const total = currentCards.length;
-    document.getElementById('completedMsg').textContent =
-      `Du kan ${known} av ${total} begrepp! ${known === total ? '🌟 Perfekt resultat!' : 'Fortsätt öva på de röda.'}`;
+    const msg = activeFilter === 'review'
+      ? 'Du har gått igenom alla ' + total + ' öva mer-kort! Bra jobbat!'
+      : 'Du kan ' + known + ' av ' + total + ' begrepp! ' + (known === total ? '🌟 Perfekt resultat!' : 'Fortsätt öva på de röda.');
+    document.getElementById('completedMsg').textContent = msg;
     document.getElementById('completedPanel').classList.add('show');
     document.getElementById('cardArea').style.display = 'none';
   }
@@ -753,7 +768,6 @@ function resetAll() {
   document.getElementById('cardArea').style.display = 'flex';
 }
 
-// Filter tabs
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -763,7 +777,6 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// Keyboard navigation
 document.addEventListener('keydown', e => {
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipCard(); }
   if (e.key === 'ArrowRight') nextCard();
@@ -772,8 +785,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'r' || e.key === 'R') markCard('review');
 });
 
-// Init
 initCards();
 </script>
 </body>
 </html>
+
